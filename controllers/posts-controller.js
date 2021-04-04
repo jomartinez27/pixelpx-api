@@ -1,8 +1,9 @@
 const mongoose = require("mongoose");
 
 const HttpError = require("../models/http-error");
-const { update } = require("../models/post");
 const Post = require("../models/post");
+const User = require("../models/user");
+const { post } = require("../routes/posts-routes");
 
 const getPosts = async (req, res, next) => {
   let posts;
@@ -43,16 +44,36 @@ const getPostById = async (req, res, next) => {
 };
 
 const createPost = async (req, res, next) => {
-  const { title, description, image } = req.body;
+  const { title, description, image, creator } = req.body;
+
+  let user;
+  try {
+    user = await User.findById(creator);
+  } catch (error) {
+    return next(
+      new HttpError("Error fetching user, please try again later", 500)
+    );
+  }
+
+  if (!user) {
+    return next(new HttpError("Invalid user", 401));
+  }
 
   const newPost = new Post({
+    creator,
     title,
     description,
     image,
+    likes: 0,
   });
 
   try {
-    await newPost.save();
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    await newPost.save({ session });
+    user.posts.push(newPost);
+    await user.save({ session });
+    await session.commitTransaction();
   } catch (error) {
     return next(
       new HttpError("Error creating post, please try again later", 500)
@@ -67,13 +88,17 @@ const updatePost = async (req, res, next) => {
 
   let updatedPost;
   try {
-      updatedPost = await Post.findById(postId);
+    updatedPost = await Post.findById(postId);
   } catch (error) {
-      return next(new HttpError("Error fetching post, please try again later", 500));
+    return next(
+      new HttpError("Error fetching post, please try again later", 500)
+    );
   }
 
   if (!updatedPost) {
-      return next(new HttpError("Post not found, please double check post ID", 401));
+    return next(
+      new HttpError("Post not found, please double check post ID", 401)
+    );
   }
 
   const { title, description } = req.body;
@@ -81,9 +106,11 @@ const updatePost = async (req, res, next) => {
   updatedPost.description = description;
 
   try {
-      await updatedPost.save();
+    await updatedPost.save();
   } catch (error) {
-      return next(new HttpError("Could not update post, please try again later", 500));
+    return next(
+      new HttpError("Could not update post, please try again later", 500)
+    );
   }
 
   res.status(201).json({ post: updatedPost.toObject({ getters: true }) });
@@ -94,19 +121,34 @@ const deletePost = async (req, res, next) => {
 
   let deletedPost;
   try {
-      deletedPost = await Post.findById(postId);
+    deletedPost = await Post.findById(postId).populate("creator");
   } catch (error) {
-      return next(new HttpError("Error fetching post, please try again later", 500));
+    return next(
+      new HttpError("Error fetching post, please try again later", 500)
+    );
   }
 
   if (!deletedPost) {
-      return next(new HttpError("Post found found, please double check post ID", 401));
+    return next(
+      new HttpError("Post found found, please double check post ID", 401)
+    );
+  }
+
+  if (deletedPost.creator.id !== req.body.creator) {
+    return next(new HttpError("Unathorized user"), 401);
   }
 
   try {
-      deletedPost.remove();
+     const session = await mongoose.startSession();
+     session.startTransaction();
+     await deletedPost.remove({ session });
+     deletedPost.creator.posts.pull(deletedPost);
+     await deletedPost.creator.save({ session });
+     await session.commitTransaction();
   } catch (error) {
-      return next(new HttpError("Could not delete post, please try again later", 500));
+    return next(
+      new HttpError(error, 500)
+    );
   }
 
   res.status(200).json({ message: "Deleted post" });

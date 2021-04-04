@@ -2,12 +2,12 @@ const mongoose = require("mongoose");
 
 const userSchema = mongoose.Schema(
   {
-    username: { type: String, required: true, unique: true },
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
-    posts: Array,
-    likes: Array,
-    image: String,
+    username: { type: String, required: true, unique: true, minlength: 3 },
+    email: { type: String, required: true, unique: true, trim: true },
+    password: { type: String, required: true, minlength: 6 },
+    posts: [{ type: mongoose.Types.ObjectId, ref: "Post" }],
+    likes: [{ type: mongoose.Types.ObjectId, ref: "Post "}],
+    profileImage: String,
     date: Date,
   },
   { timestamps: true }
