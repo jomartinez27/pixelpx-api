@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 
 const HttpError = require("../models/http-error");
+const { update } = require("../models/post");
 const Post = require("../models/post");
 
 const getPosts = async (req, res, next) => {
@@ -61,23 +62,52 @@ const createPost = async (req, res, next) => {
   res.status(201).json({ post: newPost.toObject({ getters: true }) });
 };
 
-const updatePost = (req, res, next) => {
+const updatePost = async (req, res, next) => {
   const { postId } = req.params;
 
-  const updatedPost = DUMMY_POSTS.find((p, index) => p.id === postId);
+  let updatedPost;
+  try {
+      updatedPost = await Post.findById(postId);
+  } catch (error) {
+      return next(new HttpError("Error fetching post, please try again later", 500));
+  }
 
-  const { title } = req.body;
-  updatePost[0].title = title;
+  if (!updatedPost) {
+      return next(new HttpError("Post not found, please double check post ID", 401));
+  }
 
-  res.status(201).json({ post: updatedPost[0] });
+  const { title, description } = req.body;
+  updatedPost.title = title;
+  updatedPost.description = description;
+
+  try {
+      await updatedPost.save();
+  } catch (error) {
+      return next(new HttpError("Could not update post, please try again later", 500));
+  }
+
+  res.status(201).json({ post: updatedPost.toObject({ getters: true }) });
 };
 
-const deletePost = (req, res, next) => {
+const deletePost = async (req, res, next) => {
   const { postId } = req.params;
 
-  const deletePost = DUMMY_POSTS.find((p, index) => {
-    p.id === postId;
-  });
+  let deletedPost;
+  try {
+      deletedPost = await Post.findById(postId);
+  } catch (error) {
+      return next(new HttpError("Error fetching post, please try again later", 500));
+  }
+
+  if (!deletedPost) {
+      return next(new HttpError("Post found found, please double check post ID", 401));
+  }
+
+  try {
+      deletedPost.remove();
+  } catch (error) {
+      return next(new HttpError("Could not delete post, please try again later", 500));
+  }
 
   res.status(200).json({ message: "Deleted post" });
 };
